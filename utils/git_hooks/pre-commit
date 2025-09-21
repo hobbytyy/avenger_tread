@@ -1,0 +1,2 @@
+#!/bin/sh
+python utils/auto_logger.py --log-type $CHANGE_TYPE
