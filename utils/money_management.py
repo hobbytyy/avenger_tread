@@ -83,6 +83,64 @@ def validate_fee_rate(fee_rate: str) -> float:
         return get_default_fee_rate()
 
 
+def calculate_buy_and_hold_return(btc_df: pd.DataFrame, principal: float, fee_rate: float) -> dict:
+    """
+    计算从第一个交易日买入并持有到最后一个交易日的收益情况
+    :param btc_df: BTC数据DataFrame
+    :param principal: 本金
+    :param fee_rate: 手续费率
+    :return: 包含收益信息的字典
+    """
+    if len(btc_df) < 2:
+        return {
+            'buy_date': None,
+            'buy_price': 0.0,
+            'sell_date': None,
+            'sell_price': 0.0,
+            'principal': principal,
+            'return': 0.0,
+            'return_rate': 0.0,
+            'fee': 0.0,
+            'buy_fee': 0.0,
+            'sell_fee': 0.0,
+            'hold_days': 0
+        }
+    
+    # 第一天买入
+    buy_date = btc_df.iloc[0]['交易时间']
+    buy_price = btc_df.iloc[0]['收盘价']
+    buy_amount = principal
+    buy_fee = calculate_fee(buy_amount, fee_rate)
+    
+    # 最后一天卖出
+    sell_date = btc_df.iloc[-1]['交易时间']
+    sell_price = btc_df.iloc[-1]['收盘价']
+    sell_amount = principal * (sell_price / buy_price)
+    sell_fee = calculate_fee(sell_amount, fee_rate)
+    
+    # 计算盈亏
+    total_fee = buy_fee + sell_fee
+    trade_return = sell_amount - buy_amount - total_fee
+    trade_return_rate = trade_return / principal
+    
+    # 计算持仓天数
+    hold_days = len(btc_df) - 1
+    
+    return {
+        'buy_date': buy_date,
+        'buy_price': buy_price,
+        'sell_date': sell_date,
+        'sell_price': sell_price,
+        'principal': principal,
+        'return': trade_return,
+        'return_rate': trade_return_rate * 100,  # 转换为百分比
+        'fee': total_fee,
+        'buy_fee': buy_fee,
+        'sell_fee': sell_fee,
+        'hold_days': hold_days
+    }
+
+
 def calculate_trade_details(btc_df: pd.DataFrame, signals: pd.Series, principal: float, fee_rate: float) -> dict:
     """
     计算每一笔交易的详细信息
@@ -175,7 +233,7 @@ def calculate_trade_details(btc_df: pd.DataFrame, signals: pd.Series, principal:
             'fee': buy_fee + sell_fee,
             'buy_fee': buy_fee,
             'sell_fee': sell_fee,
-            'hold_days': hold_days  # 持仓天数
+            'hold_days': hold_days  # 持房天数
         })
         
         total_return += trade_return

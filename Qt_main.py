@@ -7,7 +7,8 @@
 
 import sys
 import os
-
+import warnings
+warnings.filterwarnings("ignore", message="urllib3 v2 only supports OpenSSL 1.1.1+")
 # 添加项目根目录到Python路径
 sys.path.append(os.path.join(os.path.dirname(__file__), '.'))
 
@@ -15,14 +16,82 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QDockWidget,
                              QAction, QLabel, QVBoxLayout, QHBoxLayout, QSplitter, 
                              QTextEdit, QMessageBox, QPushButton, QFileDialog,
                              QTableWidget, QTableWidgetItem, QHeaderView, QComboBox, QLineEdit,
-                             QAbstractItemView)
-from PyQt5.QtCore import Qt, pyqtSlot
+                             QAbstractItemView, QDialog, QDateEdit, QFormLayout, QDialogButtonBox)
+from PyQt5.QtCore import Qt, pyqtSlot, QDate
 from PyQt5.QtGui import QFont
 
 import pandas as pd
 
 # 导入资金管理模块
 from utils.money_management import validate_principal, validate_fee_rate
+
+
+class DateRangeDialog(QDialog):
+    """日期范围选择对话框"""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("选择回测时间范围")
+        self.setModal(True)
+        self.resize(300, 150)
+        
+        layout = QFormLayout()
+        
+        # 添加说明标签
+        info_label = QLabel("请选择回测时间范围\n如果不选择，默认回测全部数据")
+        info_label.setAlignment(Qt.AlignCenter)
+        layout.addRow(info_label)
+        
+        # 开始日期选择
+        self.start_date_edit = QDateEdit()
+        self.start_date_edit.setCalendarPopup(True)
+        self.start_date_edit.setDate(QDate.currentDate().addYears(-1))  # 默认一年前
+        self.start_date_edit.setDisplayFormat("yyyy-MM-dd")
+        
+        # 结束日期选择
+        self.end_date_edit = QDateEdit()
+        self.end_date_edit.setCalendarPopup(True)
+        self.end_date_edit.setDate(QDate.currentDate())  # 默认今天
+        self.end_date_edit.setDisplayFormat("yyyy-MM-dd")
+        
+        layout.addRow("开始日期:", self.start_date_edit)
+        layout.addRow("结束日期:", self.end_date_edit)
+        
+        # 添加按钮并居中布局
+        button_layout = QHBoxLayout()
+        button_layout.addStretch()  # 左侧弹性空间
+        self.default_btn = QPushButton("默认")
+        self.custom_btn = QPushButton("自选")
+        button_layout.addWidget(self.default_btn)
+        button_layout.addWidget(self.custom_btn)
+        button_layout.addStretch()  # 右侧弹性空间
+        
+        # 连接按钮信号
+        self.default_btn.clicked.connect(self.reject)
+        self.custom_btn.clicked.connect(self.accept)
+        
+        layout.addRow(button_layout)
+        
+        self.setLayout(layout)
+        
+        # 保存用户选择的日期
+        self.start_date = None
+        self.end_date = None
+    
+    def accept(self):
+        """确认选择"""
+        self.start_date = self.start_date_edit.date().toString("yyyy-MM-dd")
+        self.end_date = self.end_date_edit.date().toString("yyyy-MM-dd")
+        super().accept()
+    
+    def reject(self):
+        """默认选择，不使用日期筛选"""
+        self.start_date = None
+        self.end_date = None
+        super().reject()
+    
+    def get_date_range(self):
+        """获取选择的日期范围"""
+        return self.start_date, self.end_date
 
 
 class QuantBacktestApp(QMainWindow):
@@ -44,12 +113,16 @@ class QuantBacktestApp(QMainWindow):
         self.run_action = None
         self.export_action = None
         self.optimization_results = None  # 保存参数优化结果用于返回
+        self.data_download_window = None  # 数据下载窗口引用
         self.init_ui()
         
     def init_ui(self):
         # 设置窗口标题和大小
         self.setWindowTitle('量化回测系统 v2.0')
         self.setGeometry(100, 100, 1400, 900)
+        
+        # 在 macOS 上强制显示本地菜单栏而不是全局菜单栏
+        self.menuBar().setNativeMenuBar(False)
         
         # 创建主分割器
         main_splitter = QSplitter(Qt.Horizontal)
@@ -212,6 +285,11 @@ class QuantBacktestApp(QMainWindow):
     def init_menu(self):
         # 文件菜单
         file_menu = self.menuBar().addMenu('文件')
+        
+        # 添加数据下载菜单项
+        data_download_action = QAction('数据下载', self)
+        data_download_action.triggered.connect(self.open_data_download)
+        file_menu.addAction(data_download_action)
         
         run_action = QAction('运行回测', self)
         run_action.triggered.connect(self.run_backtest)
@@ -458,7 +536,12 @@ class QuantBacktestApp(QMainWindow):
                         # 显示优化结果
                         result_text = f"参数优化完成\n"
                         result_text += f"数据文件: {os.path.basename(self.filepath)}\n"
-                        result_text += f"数据行数: {len(self.loaded_data)}\n"
+                        # 添加数据范围信息
+                        if not self.loaded_data.empty:
+                            start_date = self.loaded_data.iloc[0]['交易时间']
+                            end_date = self.loaded_data.iloc[-1]['交易时间']
+                            result_text += f"数据范围: {start_date} 至 {end_date}\n"
+                            result_text += f"数据行数: {len(self.loaded_data)}\n"
                         result_text += f"优化策略: {target_strategy_name}\n"
                         result_text += f"参数范围: {start_val}-{end_val}\n"
                         result_text += f"本金: {principal:.2f} 元\n"
@@ -542,10 +625,22 @@ class QuantBacktestApp(QMainWindow):
                         self.result_table.setRowCount(0)
                         self.result_table.setColumnCount(0)
                     
+                    # 计算一直持有策略的收益
+                    from utils.money_management import calculate_buy_and_hold_return
+                    buy_and_hold_details = calculate_buy_and_hold_return(self.loaded_data, principal, fee_rate)
+                    
+                    # 获取数据范围信息
+                    data_range_info = ""
+                    if not self.loaded_data.empty:
+                        start_date = self.loaded_data.iloc[0]['交易时间']
+                        end_date = self.loaded_data.iloc[-1]['交易时间']
+                        data_range_info = f"数据范围: {start_date} 至 {end_date}\n"
+                        data_range_info += f"数据行数: {len(self.loaded_data)}\n"
+                    
                     # 构建简化的回测结果文本
                     result_text = f"回测完成\n"
                     result_text += f"数据文件: {os.path.basename(self.filepath)}\n"
-                    result_text += f"数据行数: {len(self.loaded_data)}\n"
+                    result_text += data_range_info
                     result_text += f"策略: {self.selected_strategy}\n\n"
                     result_text += f"回测结果:\n"
                     result_text += f"- 交易次数: {trade_details.get('trade_count', 0)}\n"
@@ -554,6 +649,27 @@ class QuantBacktestApp(QMainWindow):
                     result_text += f"- 总收益率: {trade_details.get('total_return_rate', 0.0):.2f}%\n"
                     result_text += f"- 胜率: {trade_details.get('win_rate', 0.0)*100:.2f}%\n"
                     result_text += f"- 盈亏比: {trade_details.get('profit_loss_ratio', 0.0):.2f}\n\n"
+                    
+                    # 添加一直持有策略的对比
+                    result_text += f"一直持有策略对比:\n"
+                    result_text += f"- 买入日期: {buy_and_hold_details.get('buy_date', 'N/A')}\n"
+                    result_text += f"- 买入价格: {buy_and_hold_details.get('buy_price', 0.0):.2f}\n"
+                    result_text += f"- 卖出日期: {buy_and_hold_details.get('sell_date', 'N/A')}\n"
+                    result_text += f"- 卖出价格: {buy_and_hold_details.get('sell_price', 0.0):.2f}\n"
+                    result_text += f"- 总手续费: {buy_and_hold_details.get('fee', 0.0):.2f} 元\n"
+                    result_text += f"- 总收益: {buy_and_hold_details.get('return', 0.0):.2f} 元\n"
+                    result_text += f"- 总收益率: {buy_and_hold_details.get('return_rate', 0.0):.2f}%\n\n"
+                    
+                    # 添加策略对比结论
+                    strategy_return = trade_details.get('total_return_rate', 0.0)
+                    buy_hold_return = buy_and_hold_details.get('return_rate', 0.0)
+                    if strategy_return > buy_hold_return:
+                        result_text += f"结论: 策略交易收益更高 (+{strategy_return - buy_hold_return:.2f}%)"
+                    elif strategy_return < buy_hold_return:
+                        result_text += f"结论: 一直持有收益更高 (+{buy_hold_return - strategy_return:.2f}%)"
+                    else:
+                        result_text += f"结论: 两种策略收益相同"
+                    
                     result_text += f"\n回测已完成"
                     
                     self.statusBar().showMessage('回测完成')
@@ -697,6 +813,10 @@ class QuantBacktestApp(QMainWindow):
                             input_widget.setPlaceholderText(default_descriptions[i])
                         else:
                             input_widget.setPlaceholderText(f"参数 {i+1}")
+                            
+                # 清空参数输入框内容，以便显示新的提示文本
+                for input_widget in self.param_inputs:
+                    input_widget.clear()
             except Exception as e:
                 print(f"获取策略描述失败: {e}")
             
@@ -728,9 +848,48 @@ class QuantBacktestApp(QMainWindow):
             # 验证数据格式
             expected_columns = ['交易时间', '开盘价', '最高价', '最低价', '收盘价']
             if list(self.loaded_data.columns)[:5] != expected_columns:
-                QMessageBox.warning(self, '警告', '数据格式不正确，请确保包含以下列：交易时间, 开盘价, 最高价, 最低价, 收盘价')
+                QMessageBox.warning(self, '警告', '数据格式不正确，请确保包含以下列：交易时间, 开盘价, 最高价, 最低价, 收闭价')
                 self.loaded_data = None
                 return
+            
+            # 弹出日期范围选择对话框
+            date_dialog = DateRangeDialog(self)
+            dialog_result = date_dialog.exec_()
+            
+            # 检查用户的选择
+            if dialog_result == QDialog.Accepted:
+                # 用户点击了"自选"按钮，使用自定义日期范围
+                start_date, end_date = date_dialog.get_date_range()
+                
+                # 如果用户选择了日期范围，则筛选数据
+                if start_date or end_date:
+                    # 确保交易时间列是datetime类型，使用正确的格式
+                    self.loaded_data['交易时间'] = pd.to_datetime(self.loaded_data['交易时间'], format='ISO8601', errors='coerce')
+                    
+                    # 应用日期筛选
+                    if start_date:
+                        try:
+                            start_date = pd.to_datetime(start_date, format='%Y-%m-%d')
+                            self.loaded_data = self.loaded_data[self.loaded_data['交易时间'] >= start_date]
+                        except Exception as e:
+                            QMessageBox.warning(self, '警告', f'开始日期格式不正确: {str(e)}')
+                            return
+                    
+                    if end_date:
+                        try:
+                            end_date = pd.to_datetime(end_date, format='%Y-%m-%d')
+                            self.loaded_data = self.loaded_data[self.loaded_data['交易时间'] <= end_date]
+                        except Exception as e:
+                            QMessageBox.warning(self, '警告', f'结束日期格式不正确: {str(e)}')
+                            return
+                    
+                    # 重置索引
+                    self.loaded_data = self.loaded_data.reset_index(drop=True)
+            elif dialog_result == QDialog.Rejected:
+                # 用户点击了"默认"按钮，使用全部数据
+                # 确保交易时间列是datetime类型，使用正确的格式
+                self.loaded_data['交易时间'] = pd.to_datetime(self.loaded_data['交易时间'], format='ISO8601', errors='coerce')
+                # 不进行日期筛选，使用全部数据
             
             # 更新界面显示
             self.update_ui_with_data()
@@ -1009,6 +1168,24 @@ class QuantBacktestApp(QMainWindow):
                 # 返回参数优化结果列表
                 if self.optimization_results is not None:
                     self.update_optimization_results_table(self.optimization_results)
+
+    def open_data_download(self):
+        """打开数据下载窗口"""
+        try:
+            # 导入数据下载窗口类
+            sys.path.append(os.path.join(os.path.dirname(__file__), '界面ui'))
+            from 界面ui.Data_down import DataIntervalSelector
+            
+            # 创建并显示数据下载窗口
+            self.data_download_window = DataIntervalSelector()
+            self.data_download_window.show()
+        except Exception as e:
+            QMessageBox.critical(self, '错误', f'无法打开数据下载窗口:\n{str(e)}')
+
+    def _reset_date_range(self):
+        """重置日期范围输入"""
+        self.start_date_edit.clear()
+        self.end_date_edit.clear()
 
 if __name__ == '__main__':
     print("正在启动量化回测系统...")
