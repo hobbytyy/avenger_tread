@@ -20,6 +20,18 @@ from program.step2_计算因子 import calculate_factors
 from program.step3_选股 import select_stocks
 from program.step4_实盘模拟 import simulate_performance
 
+# 策略描述
+STRATEGY_DESCRIPTION = "寻找最优参数策略：通过遍历不同的参数组合，寻找最优的策略参数配置。"
+
+# 策略参数描述
+STRATEGY_PARAM_DESCRIPTIONS = [
+    "选股数量(如: 10)",
+    "因子1权重(如: 1.0)",
+    "因子2权重(如: 0.5)",
+    "参数 4",
+    "参数 5"
+]
+
 # ====================================================================================================
 # ** 脚本运行前配置 **
 # 主要是解决各种各样奇怪的问题们
