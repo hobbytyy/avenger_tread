@@ -34,7 +34,7 @@ jobs:
         pyinstaller --onefile --windowed --name "量化回测系统" --icon=NONE Qt_main.py
         
     - name: Upload artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: macos-application
         path: dist/
