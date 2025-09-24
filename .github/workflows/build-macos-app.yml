@@ -29,12 +29,52 @@ jobs:
       run: |
         pip install pyinstaller
         
+    - name: Check Python and PyInstaller versions
+      run: |
+        python --version
+        pyinstaller --version
+        echo "Current directory: $(pwd)"
+        echo "Files in current directory:"
+        ls -la
+        
     - name: Build macOS application with PyInstaller
       run: |
         pyinstaller --onedir --windowed --name "量化回测系统" --icon=NONE Qt_main.py
+      continue-on-error: true
+        
+    - name: Debug build output
+      run: |
+        echo "Checking build directory:"
+        ls -la
+        if [ -d "dist" ]; then
+          echo "Contents of dist directory:"
+          ls -la dist/
+        else
+          echo "Dist directory not found"
+        fi
+        
+        echo "Checking build directory:"
+        if [ -d "build" ]; then
+          echo "Contents of build directory:"
+          ls -la build/
+        else
+          echo "Build directory not found"
+        fi
+        
+        echo "Checking for spec file:"
+        if [ -f "量化回测系统.spec" ]; then
+          echo "Spec file found"
+        else
+          echo "Spec file not found"
+        fi
         
     - name: Upload artifact
       uses: actions/upload-artifact@v4
+      if: always()
       with:
         name: macos-application
-        path: dist/
+        path: |
+          dist/
+          build/
+          *.spec
+        if-no-files-found: ignore
