@@ -33,6 +33,18 @@ QT/
 ### 回测结果界面
 ![回测结果界面](截屏2025-09-23%2023.20.09.png)
 
+## 自动构建版本
+
+您可以直接下载预构建的应用程序版本：
+
+### Windows版本
+[![Windows Build](https://github.com/hobbytyy/avenger_tread/actions/workflows/build-windows-exe.yml/badge.svg)](https://github.com/hobbytyy/avenger_tread/actions/runs/17980878485)
+- [Windows可执行文件下载](https://github.com/hobbytyy/avenger_tread/actions/runs/17980878485)
+
+### macOS版本
+[![macOS Build](https://github.com/hobbytyy/avenger_tread/actions/workflows/build-macos-app.yml/badge.svg)](https://github.com/hobbytyy/avenger_tread/actions/runs/17981905127)
+- [macOS应用程序下载](https://github.com/hobbytyy/avenger_tread/actions/runs/17981905127)
+
 ## 安装依赖
 
 在运行程序之前，请确保已安装所有依赖项：
@@ -77,7 +89,7 @@ pyinstaller --onefile --windowed --name "量化回测系统" Qt_main.py
 
 3. 打包为Mac应用程序:
 ```bash
-pyinstaller --onefile --windowed --name "量化回测系统" Qt_main.py
+pyinstaller --onedir --windowed --name "量化回测系统" Qt_main.py
 ```
 
 生成的可执行文件将位于 `dist/` 目录中。
