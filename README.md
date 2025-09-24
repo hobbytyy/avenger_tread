@@ -1,29 +1,30 @@
 # 量化回测系统
 
-这是一个基于Python的量化回测系统，支持桌面版和Web版两种使用方式。
+这是一个基于Python和PyQt5的量化回测系统桌面版应用程序。
 
 ## 项目结构
 
 ```
 QT/
-├── 界面ui/
+├── Qt_main.py           # 桌面版主程序入口
+├── utils/               # 工具模块
+│   ├── auto_logger.py   # 日志模块
+│   └── money_management.py  # 资金管理模块
+├── 界面ui/              # 界面相关模块
 │   ├── Data_down.py     # 数据下载模块
-│   └── main.py          # 桌面版主程序
-├── 数据/
+│   └── main_window.py   # 主窗口模块
+├── 数据/                # 数据相关模块
 │   └── bian_data.py     # 数据处理模块
-├── web_app.py           # Web版主程序
+├── 策略/                # 策略模块
+│   ├── MA双均线择时.py   # 双均线策略
+│   └── 参数优化策略.py   # 参数优化策略
 ├── requirements.txt     # 依赖包列表
-├── build_windows_complete.bat  # Windows打包脚本
-├── debug_run.bat        # 桌面版调试脚本
-├── fix_and_run.bat      # 桌面版修复运行脚本
-├── run_web_app.sh       # Web版启动脚本 (Mac/Linux)
-├── run_web_app.bat      # Web版启动脚本 (Windows)
-└── .venv/               # Python虚拟环境
+└── .venv/              # Python虚拟环境
 ```
 
 ## 安装依赖
 
-在运行任何版本之前，请确保已安装所有依赖项：
+在运行程序之前，请确保已安装所有依赖项：
 
 ```bash
 # 激活虚拟环境
@@ -35,53 +36,67 @@ call .venv\Scripts\activate  # Windows
 pip install -r requirements.txt
 ```
 
-## 桌面版使用
-
-### Windows系统
-双击运行 `界面ui/main.py` 或使用以下脚本：
-- `debug_run.bat` - 调试运行
-- `fix_and_run.bat` - 修复并运行
+## 运行程序
 
 ### Mac/Linux系统
 ```bash
 source .venv/bin/activate
-python 界面ui/main.py
-```
-
-## Web版使用
-
-### Mac/Linux系统
-```bash
-# 方法1: 直接运行
-source .venv/bin/activate
-streamlit run web_app.py
-
-# 方法2: 使用启动脚本
-./run_web_app.sh
+python Qt_main.py
 ```
 
 ### Windows系统
 ```cmd
-REM 方法1: 直接运行
 call .venv\Scripts\activate
-streamlit run web_app.py
-
-REM 方法2: 使用启动脚本
-run_web_app.bat
+python Qt_main.py
 ```
 
-运行后，打开浏览器访问 http://localhost:8501 查看Web应用。
+## 打包程序
 
-## 打包桌面版
+### 使用PyInstaller打包为可执行文件
 
-### Windows系统
-双击运行 `build_windows_complete.bat` 脚本进行打包。
+1. 安装PyInstaller:
+```bash
+pip install pyinstaller
+```
 
-## 故障排除
+2. 打包为Windows exe文件:
+```bash
+pyinstaller --onefile --windowed --name "量化回测系统" Qt_main.py
+```
 
-1. 如果遇到模块导入错误，请确保在虚拟环境中运行程序
-2. 如果Web版无法启动，请检查是否已安装Streamlit:
-   ```bash
-   pip install streamlit
-   ```
-3. 如果数据下载失败，请检查网络连接和API密钥设置
+3. 打包为Mac应用程序:
+```bash
+pyinstaller --onefile --windowed --name "量化回测系统" Qt_main.py
+```
+
+生成的可执行文件将位于 `dist/` 目录中。
+
+## 使用GitHub Actions自动打包
+
+本项目配置了GitHub Actions工作流，可自动打包Windows和macOS版本：
+
+- Windows版本: `.github/workflows/build-windows-exe.yml`
+- macOS版本: `.github/workflows/build-macos-app.yml`
+
+## 项目特点
+
+1. 图形化界面操作，易于使用
+2. 支持多种量化策略回测
+3. 支持参数优化功能
+4. 支持数据下载和管理
+5. 跨平台支持（Windows、macOS）
+
+## 依赖说明
+
+主要依赖包包括：
+- PyQt5: 图形界面库
+- pandas: 数据处理
+- numpy: 数值计算
+- matplotlib: 图表绘制
+- pyinstaller: 程序打包
+
+## 注意事项
+
+1. 确保在虚拟环境中运行程序以避免依赖冲突
+2. 首次运行前请确保已安装所有依赖包
+3. 如遇到中文显示问题，请检查系统字体设置
