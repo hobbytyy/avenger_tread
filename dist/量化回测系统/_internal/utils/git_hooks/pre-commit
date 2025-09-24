@@ -1,0 +1,7 @@
+#!/bin/sh
+# 检查CHANGE_TYPE环境变量是否存在，如果不存在则设置默认值
+if [ -z "$CHANGE_TYPE" ]; then
+    CHANGE_TYPE="general"
+fi
+
+python3 utils/auto_logger.py --log-type "$CHANGE_TYPE"
