@@ -148,6 +148,8 @@ class KlineWindow(QMainWindow):
             if w:
                 w.setParent(None)
 
+        # 使用finplot默认配色
+
         # 创建3行联动的 finplot 轴
         axs = fplt.create_plot_widget(self.gv, rows=3)
         # 兼容返回类型（可能是列表或元组）
@@ -173,6 +175,22 @@ class KlineWindow(QMainWindow):
             self.right_layout.setStretch(0, 3)
             self.right_layout.setStretch(1, 1)
             self.right_layout.setStretch(2, 1)
+
+        # 保持默认网格设置
+
+        # 在主图添加一个可更新的悬停图例标签（显示OHLC）
+        try:
+            self.hover_label = fplt.add_legend('', ax=self.ax0)
+            # 仅调整图例样式，提高可读性（不改变整图背景）
+            try:
+                self.hover_label.setStyleSheet(
+                    "background-color: rgba(255,255,255,0.92);"
+                    "color: #111; padding: 3px 6px; border-radius: 3px;"
+                )
+            except Exception:
+                pass
+        except Exception:
+            self.hover_label = None
 
         # 准备绘图（不启动事件循环）
         fplt.show(qt_exec=False)
@@ -274,6 +292,58 @@ class KlineWindow(QMainWindow):
 
         # 刷新显示
         fplt.refresh()
+
+        # 绑定悬停事件以更新顶部图例显示OHLC
+        try:
+            def _update_hover_legend(x, y):
+                if self.hover_label is None or self.df is None:
+                    return
+                try:
+                    ts = pd.Timestamp(x)
+                except Exception:
+                    ts = x
+                row = None
+                try:
+                    row = self.df.loc[self.df['time'] == ts]
+                except Exception:
+                    row = None
+                if row is None or row.empty:
+                    # 取最近时间索引作为兜底
+                    try:
+                        idx = self.df['time'].searchsorted(ts)
+                        idx = max(0, min(len(self.df) - 1, int(idx)))
+                        row = self.df.iloc[[idx]]
+                    except Exception:
+                        return
+                o = float(row['open'].iloc[0])
+                h = float(row['high'].iloc[0])
+                l = float(row['low'].iloc[0])
+                c = float(row['close'].iloc[0])
+                # 收盘高于开盘为多头绿色，否则为空头红色
+                # 涨红、跌黄
+                color = 'f00' if c >= o else 'ff0'
+                txt = (
+                    f"<span style='font-size:13px; color:#111'>"
+                    f"开:<span style='color:#{color}'>{o:.4f}</span> "
+                    f"高:<span style='color:#222'>{h:.4f}</span> "
+                    f"低:<span style='color:#222'>{l:.4f}</span> "
+                    f"收:<span style='color:#{color}'>{c:.4f}</span>"
+                    f"</span>"
+                )
+                try:
+                    self.hover_label.setText(txt)
+                except Exception:
+                    pass
+
+            # when='hover' 表示随鼠标移动更新（新版API推荐）
+            try:
+                fplt.set_mouse_callback(_update_hover_legend, ax=self.ax0, when='hover')
+            except Exception:
+                # 兼容旧版本
+                fplt.set_time_inspector(_update_hover_legend, ax=self.ax0, when='hover')
+        except Exception:
+            # 忽略绑定失败，不影响其他功能
+            pass
 
 
 def main():
