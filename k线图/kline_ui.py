@@ -2,11 +2,12 @@ import sys
 import os
 import pandas as pd
 import finplot as fplt
+import pyqtgraph as pg
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QSplitter, QVBoxLayout, QHBoxLayout,
     QFormLayout, QLabel, QComboBox, QLineEdit, QPushButton, QFileDialog,
-    QFrame, QGraphicsView
+    QFrame, QGraphicsView, QGroupBox, QScrollArea, QButtonGroup
 )
 
 from indicators import calculate_macd, calculate_ema, calculate_bollinger_bands
@@ -26,58 +27,94 @@ class KlineWindow(QMainWindow):
         splitter = QSplitter(Qt.Orientation.Horizontal)
         self.setCentralWidget(splitter)
 
-        # 左侧控制面板
+        # 左侧控制面板（四个分组 + 滚动容器）
         control = QWidget()
         control_layout = QVBoxLayout(control)
-        form = QFormLayout()
-        control_layout.addLayout(form)
 
-        # 数据源选择
+        # 基本设置
+        basic_group = QGroupBox('基本设置')
+        basic_layout = QVBoxLayout(basic_group)
         self.path_label = QLabel(self.data_path)
+        try:
+            self.path_label.setWordWrap(True)
+        except Exception:
+            pass
         btn_choose = QPushButton('选择数据源')
         btn_choose.clicked.connect(self.choose_data)
-        hl_path = QHBoxLayout()
-        hl_path.addWidget(self.path_label)
-        hl_path.addWidget(btn_choose)
-        control_layout.addLayout(hl_path)
-
-        # 主图指标下拉
-        self.cmb_main = QComboBox()
-        self.cmb_main.addItems(['无', 'EMA', '布林带'])
-        form.addRow(QLabel('主图指标'), self.cmb_main)
-
-        # 子图1 下拉
-        self.cmb_sub1 = QComboBox()
-        self.cmb_sub1.addItems(['成交量', '无'])
-        form.addRow(QLabel('子图1'), self.cmb_sub1)
-
-        # 子图2 下拉
-        self.cmb_sub2 = QComboBox()
-        self.cmb_sub2.addItems(['MACD', '无'])
-        form.addRow(QLabel('子图2'), self.cmb_sub2)
-
-        # 参数输入
-        self.edit_ema = QLineEdit('5,10,20')
-        form.addRow(QLabel('EMA周期(逗号分隔)'), self.edit_ema)
-        self.edit_bb_period = QLineEdit('20')
-        form.addRow(QLabel('布林周期'), self.edit_bb_period)
-        self.edit_bb_mult = QLineEdit('2')
-        form.addRow(QLabel('布林倍数'), self.edit_bb_mult)
-        self.edit_macd = QLineEdit('12,26,9')
-        form.addRow(QLabel('MACD参数 fast,slow,signal'), self.edit_macd)
-
-        # 操作按钮
+        basic_layout.addWidget(btn_choose)
+        basic_layout.addWidget(self.path_label)
         btn_draw = QPushButton('绘制/刷新')
         btn_reset = QPushButton('重置视图')
-        btn_snapshot = QPushButton('截图PNG')
         btn_draw.clicked.connect(self.redraw)
         btn_reset.clicked.connect(self.reset_view)
-        btn_snapshot.clicked.connect(self.snapshot)
         hl_ops = QHBoxLayout()
         hl_ops.addWidget(btn_draw)
         hl_ops.addWidget(btn_reset)
-        hl_ops.addWidget(btn_snapshot)
-        control_layout.addLayout(hl_ops)
+        basic_layout.addLayout(hl_ops)
+
+        # 工具栏
+        tools_group = QGroupBox('工具栏')
+        tools_layout = QHBoxLayout(tools_group)
+        self.btn_line = QPushButton('画线')
+        self.btn_rect = QPushButton('矩形')
+        self.btn_del = QPushButton('删除选中')
+        self.btn_clear = QPushButton('清空标注')
+        # 可选中互斥（工具模式）
+        self.btn_line.setCheckable(True)
+        self.btn_rect.setCheckable(True)
+        tool_group = QButtonGroup(self)
+        tool_group.setExclusive(True)
+        tool_group.addButton(self.btn_line)
+        tool_group.addButton(self.btn_rect)
+        # 连接功能
+        self.btn_line.clicked.connect(self.add_line_roi)
+        self.btn_rect.clicked.connect(self.add_rect_roi)
+        self.btn_del.clicked.connect(self.delete_selected_roi)
+        self.btn_clear.clicked.connect(self.clear_rois)
+        tools_layout.addWidget(self.btn_line)
+        tools_layout.addWidget(self.btn_rect)
+        tools_layout.addWidget(self.btn_del)
+        tools_layout.addWidget(self.btn_clear)
+
+        # 主图指标
+        main_group = QGroupBox('主图指标')
+        main_form = QFormLayout(main_group)
+        self.cmb_main = QComboBox()
+        self.cmb_main.addItems(['无', 'EMA', '布林带'])
+        main_form.addRow(QLabel('主图指标'), self.cmb_main)
+        self.edit_ema = QLineEdit('5,10,20')
+        self.lbl_ema = QLabel('EMA周期(逗号分隔)')
+        main_form.addRow(self.lbl_ema, self.edit_ema)
+        self.edit_bb_period = QLineEdit('20')
+        self.lbl_bb_period = QLabel('布林周期')
+        main_form.addRow(self.lbl_bb_period, self.edit_bb_period)
+        self.edit_bb_mult = QLineEdit('2')
+        self.lbl_bb_mult = QLabel('布林倍数')
+        main_form.addRow(self.lbl_bb_mult, self.edit_bb_mult)
+
+        # 子图指标
+        sub_group = QGroupBox('子图指标')
+        sub_form = QFormLayout(sub_group)
+        self.cmb_sub1 = QComboBox()
+        self.cmb_sub1.addItems(['成交量', '无'])
+        sub_form.addRow(QLabel('子图1'), self.cmb_sub1)
+        self.cmb_sub2 = QComboBox()
+        self.cmb_sub2.addItems(['MACD', '无'])
+        sub_form.addRow(QLabel('子图2'), self.cmb_sub2)
+        self.edit_macd = QLineEdit('12,26,9')
+        self.lbl_macd = QLabel('MACD参数 fast,slow,signal')
+        sub_form.addRow(self.lbl_macd, self.edit_macd)
+
+        # 加入控制面板
+        control_layout.addWidget(basic_group)
+        control_layout.addWidget(tools_group)
+        control_layout.addWidget(main_group)
+        control_layout.addWidget(sub_group)
+
+        # 左侧使用滚动区域，避免高度溢出
+        scroll = QScrollArea()
+        scroll.setWidget(control)
+        scroll.setWidgetResizable(True)
 
         # 右侧绘图区容器
         plot_container = QWidget()
@@ -93,7 +130,7 @@ class KlineWindow(QMainWindow):
         self.gv.setLayout(self.right_layout)
 
         # 分割器加入左右面板
-        splitter.addWidget(control)
+        splitter.addWidget(scroll)
         # 在右侧放一个边框包裹，避免黑边
         right_frame = QFrame()
         right_frame.setFrameShape(QFrame.Shape.StyledPanel)
@@ -103,11 +140,11 @@ class KlineWindow(QMainWindow):
         splitter.addWidget(right_frame)
         splitter.setStretchFactor(0, 0)
         splitter.setStretchFactor(1, 1)
-        # 初始尺寸：右侧约 6/7，左侧约 1/7（更窄）
+        # 初始尺寸：右侧约 4/5，左侧约 1/5
         try:
             total_w = max(self.width(), 700)
-            left_w = max(150, int(total_w * 1 / 7))
-            right_w = max(500, int(total_w * 6 / 7))
+            left_w = max(200, int(total_w * 1 / 5))
+            right_w = max(500, int(total_w * 4 / 5))
             splitter.setSizes([left_w, right_w])
         except Exception:
             pass
@@ -118,6 +155,15 @@ class KlineWindow(QMainWindow):
         except Exception:
             pass
         self.build_axes()
+        # 初始参数区可见性
+        try:
+            self.cmb_main.currentTextChanged.connect(self._update_main_params_visibility)
+            self.cmb_sub1.currentTextChanged.connect(self._update_sub_params_visibility)
+            self.cmb_sub2.currentTextChanged.connect(self._update_sub_params_visibility)
+            self._update_main_params_visibility()
+            self._update_sub_params_visibility()
+        except Exception:
+            pass
         if self.df is not None:
             self.redraw()
 
@@ -222,6 +268,112 @@ class KlineWindow(QMainWindow):
             self.statusBar().showMessage(f'已保存截图: {out}', 5000)
         except Exception as e:
             self.statusBar().showMessage(f'截图失败: {e}', 5000)
+
+    # 工具栏：ROI绘制与管理
+    def _get_viewbox(self):
+        try:
+            return self.ax0.vb
+        except Exception:
+            try:
+                return self.ax0.ax_widget.plotItem.vb
+            except Exception:
+                return None
+
+    def add_line_roi(self):
+        vb = self._get_viewbox()
+        if vb is None:
+            self.statusBar().showMessage('未获取到ViewBox，无法画线', 5000)
+            return
+        xr, yr = vb.viewRange()
+        xmid = (xr[0] + xr[1]) / 2
+        ymid = (yr[0] + yr[1]) / 2
+        roi = pg.LineSegmentROI([[xmid - (xr[1]-xr[0])*0.1, ymid], [xmid + (xr[1]-xr[0])*0.1, ymid]], pen='r')
+        vb.addItem(roi)
+        if not hasattr(self, 'rois'):
+            self.rois = []
+        self.rois.append(roi)
+        self.statusBar().showMessage('已添加线段，拖动端点可调整', 3000)
+
+    def add_rect_roi(self):
+        vb = self._get_viewbox()
+        if vb is None:
+            self.statusBar().showMessage('未获取到ViewBox，无法绘制矩形', 5000)
+            return
+        xr, yr = vb.viewRange()
+        w = (xr[1] - xr[0]) * 0.2
+        h = (yr[1] - yr[0]) * 0.2
+        x = xr[0] + (xr[1] - xr[0]) * 0.4
+        y = yr[0] + (yr[1] - yr[0]) * 0.4
+        roi = pg.RectROI([x, y], [w, h], pen='y')
+        vb.addItem(roi)
+        if not hasattr(self, 'rois'):
+            self.rois = []
+        self.rois.append(roi)
+        self.statusBar().showMessage('已添加矩形，拖动可调整大小与位置', 3000)
+
+    def delete_selected_roi(self):
+        removed = False
+        if hasattr(self, 'rois'):
+            for roi in list(self.rois):
+                try:
+                    if hasattr(roi, 'isSelected') and roi.isSelected():
+                        vb = self._get_viewbox()
+                        if vb:
+                            vb.removeItem(roi)
+                        self.rois.remove(roi)
+                        removed = True
+                except Exception:
+                    pass
+            if not removed and self.rois:
+                roi = self.rois.pop()
+                vb = self._get_viewbox()
+                if vb:
+                    try:
+                        vb.removeItem(roi)
+                    except Exception:
+                        pass
+                removed = True
+        self.statusBar().showMessage('已删除选中标注' if removed else '无选中标注', 3000)
+
+    def clear_rois(self):
+        vb = self._get_viewbox()
+        cnt = 0
+        if hasattr(self, 'rois'):
+            for roi in list(self.rois):
+                try:
+                    if vb:
+                        vb.removeItem(roi)
+                    cnt += 1
+                except Exception:
+                    pass
+            self.rois.clear()
+        self.statusBar().showMessage(f'已清空标注 {cnt} 个', 3000)
+
+    # 参数区显示/隐藏逻辑
+    def _update_main_params_visibility(self):
+        t = self.cmb_main.currentText() if hasattr(self, 'cmb_main') else '无'
+        ema = (t == 'EMA')
+        bb = (t == '布林带')
+        for w in [self.lbl_ema, self.edit_ema]:
+            try:
+                w.setVisible(ema)
+            except Exception:
+                pass
+        for w in [self.lbl_bb_period, self.edit_bb_period, self.lbl_bb_mult, self.edit_bb_mult]:
+            try:
+                w.setVisible(bb)
+            except Exception:
+                pass
+
+    def _update_sub_params_visibility(self):
+        # 子图1当前无参数；子图2：仅在MACD时显示
+        t2 = self.cmb_sub2.currentText() if hasattr(self, 'cmb_sub2') else '无'
+        macd = (t2 == 'MACD')
+        for w in [self.lbl_macd, self.edit_macd]:
+            try:
+                w.setVisible(macd)
+            except Exception:
+                pass
 
     def _parse_ints(self, text: str):
         try:
