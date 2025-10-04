@@ -52,6 +52,15 @@ class KlineWindow(QMainWindow):
         hl_ops.addWidget(btn_reset)
         basic_layout.addLayout(hl_ops)
 
+        # 悬停信息显示在控制面板
+        self.lbl_hover = QLabel('悬停: —')
+        try:
+            self.lbl_hover.setWordWrap(True)
+            self.lbl_hover.setStyleSheet('color:#111;')
+        except Exception:
+            pass
+        basic_layout.addWidget(self.lbl_hover)
+
         # 工具栏
         tools_group = QGroupBox('工具栏')
         tools_layout = QHBoxLayout(tools_group)
@@ -224,19 +233,8 @@ class KlineWindow(QMainWindow):
 
         # 保持默认网格设置
 
-        # 在主图添加一个可更新的悬停图例标签（显示OHLC）
-        try:
-            self.hover_label = fplt.add_legend('', ax=self.ax0)
-            # 仅调整图例样式，提高可读性（不改变整图背景）
-            try:
-                self.hover_label.setStyleSheet(
-                    "background-color: rgba(255,255,255,0.92);"
-                    "color: #111; padding: 3px 6px; border-radius: 3px;"
-                )
-            except Exception:
-                pass
-        except Exception:
-            self.hover_label = None
+        # 不再在图上创建悬停图例，改为在左侧面板标签显示
+        self.hover_label = None
 
         # 准备绘图（不启动事件循环）
         fplt.show(qt_exec=False)
@@ -430,7 +428,13 @@ class KlineWindow(QMainWindow):
             fplt.plot(df['time'], df['bb_middle'], ax=self.ax0, legend='BB Mid', color='#2ca02c')
             fplt.plot(df['time'], df['bb_upper'], ax=self.ax0, legend='BB Upper', color='#ff7f0e')
             fplt.plot(df['time'], df['bb_lower'], ax=self.ax0, legend='BB Lower', color='#ff7f0e')
-            fplt.fill_between(df['time'], df['bb_lower'], df['bb_upper'], ax=self.ax0, color='#ff7f0e22')
+            try:
+                fplt.fill_between(df['time'], df['bb_lower'], df['bb_upper'], color='#ff7f0e22')
+            except TypeError:
+                try:
+                    fplt.fill_between(df['time'], df['bb_lower'], df['bb_upper'], color='#ff7f0e22')
+                except Exception:
+                    pass
 
         # 子图1：成交量或无
         if self.cmb_sub1.currentText() == '成交量':
@@ -448,7 +452,7 @@ class KlineWindow(QMainWindow):
         # 绑定悬停事件以更新顶部图例显示OHLC
         try:
             def _update_hover_legend(x, y):
-                if self.hover_label is None or self.df is None:
+                if self.df is None:
                     return
                 try:
                     ts = pd.Timestamp(x)
@@ -473,17 +477,19 @@ class KlineWindow(QMainWindow):
                 c = float(row['close'].iloc[0])
                 # 收盘高于开盘为多头绿色，否则为空头红色
                 # 涨红、跌黄
-                color = 'f00' if c >= o else 'ff0'
+                # 红涨蓝跌
+                color = 'f00' if c >= o else '00f'
                 txt = (
                     f"<span style='font-size:13px; color:#111'>"
-                    f"开:<span style='color:#{color}'>{o:.4f}</span> "
-                    f"高:<span style='color:#222'>{h:.4f}</span> "
-                    f"低:<span style='color:#222'>{l:.4f}</span> "
-                    f"收:<span style='color:#{color}'>{c:.4f}</span>"
+                    f"开:<span style='color:#{color}'>{o:.2f}</span> "
+                    f"高:<span style='color:#222'>{h:.2f}</span> "
+                    f"低:<span style='color:#222'>{l:.2f}</span> "
+                    f"收:<span style='color:#{color}'>{c:.2f}</span>"
                     f"</span>"
                 )
                 try:
-                    self.hover_label.setText(txt)
+                    if hasattr(self, 'lbl_hover') and self.lbl_hover is not None:
+                        self.lbl_hover.setText(txt)
                 except Exception:
                     pass
 
